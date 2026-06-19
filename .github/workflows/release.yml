@@ -1,0 +1,103 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*-nixling.*"]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions: {}
+    env:
+      GITHUB_TOKEN: ""
+      ACTIONS_RUNTIME_TOKEN: ""
+      CARGO_INCREMENTAL: "0"
+      SECCOMP_REV: "299c1e7c3d5a1b98106212c20f58b9fdb7b1b1ea"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "release-${{ runner.os }}"
+          save-if: ${{ github.ref_type == 'tag' }}
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            pkg-config \
+            protobuf-compiler \
+            libcap-dev \
+            libdbus-1-dev \
+            libdrm-dev \
+            libelf-dev \
+            libepoxy-dev \
+            libgbm-dev \
+            libgl1-mesa-dev \
+            libminijail-dev \
+            libssl-dev \
+            libvirglrenderer-dev \
+            libwayland-dev
+      - name: Build crosvm (release)
+        run: cargo build --release --locked --bin crosvm --features virgl_renderer
+      - name: Fetch and compile seccomp policies
+        run: |
+          git init seccomp-src
+          git -C seccomp-src remote add origin https://github.com/google/crosvm.git
+          git -C seccomp-src config core.sparseCheckout true
+          printf 'jail/seccomp/x86_64/\n' > seccomp-src/.git/info/sparse-checkout
+          git -C seccomp-src fetch --depth 1 origin "$SECCOMP_REV"
+          git -C seccomp-src checkout --detach FETCH_HEAD
+
+          mkdir -p release/seccomp
+          cp seccomp-src/jail/seccomp/x86_64/* release/seccomp/
+          chmod -R u+w release/seccomp
+          sed -i 's|/usr/share/policy/crosvm/|./|g' release/seccomp/*.policy
+          find release/seccomp -name '*.policy' ! -name 'common_device.policy' -exec sed -i '/^statx:/d' {} +
+          cat >> release/seccomp/common_device.policy <<'EOF'
+
+# nixling glibc 2.41+ compat
+statx: 1
+EOF
+          for p in release/seccomp/*.policy; do
+            python3 third_party/minijail/tools/compile_seccomp_policy.py \
+              --arch-json release/seccomp/constants.json \
+              --default-action trap \
+              "$p" "${p%.policy}.bpf"
+          done
+      - name: Package binary and seccomp bundle
+        run: |
+          VERSION="${GITHUB_REF_NAME}"
+          mkdir -p release/package/share/policy/crosvm
+          install -m755 target/release/crosvm release/package/crosvm
+          cp release/seccomp/*.bpf release/package/share/policy/crosvm/
+          cp release/seccomp/*.policy release/package/share/policy/crosvm/
+          tar czf "release/crosvm-${VERSION}-x86_64-linux.tar.gz" \
+            -C release/package crosvm share
+          cd release && sha256sum *.tar.gz > SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-binaries
+          path: release/
+
+  release:
+    needs: [build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-binaries
+          path: release/
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${GITHUB_REF_NAME}"
+          gh release create "$VERSION" release/* \
+            --title "$VERSION" \
+            --notes "Automated release. crosvm with nixling GPU patches and bundled seccomp BPF policies."
