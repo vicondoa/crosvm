@@ -1,5 +1,10 @@
 {
-  "version": null,
+  "version": "v0.1.0-nixling.1",
   "system": "x86_64-linux",
-  "binaries": {}
+  "binaries": {
+    "crosvm": {
+      "url": "https://github.com/vicondoa/crosvm/releases/download/v0.1.0-nixling.1/crosvm-v0.1.0-nixling.1-x86_64-linux.tar.gz",
+      "hash": "sha256-UF0RLRUjpW9+WhZsHEmy/OCNB507ecj0xvkL9NmNRc8="
+    }
+  }
 }
