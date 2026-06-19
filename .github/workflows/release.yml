@@ -56,11 +56,7 @@ jobs:
           chmod -R u+w release/seccomp
           sed -i 's|/usr/share/policy/crosvm/|./|g' release/seccomp/*.policy
           find release/seccomp -name '*.policy' ! -name 'common_device.policy' -exec sed -i '/^statx:/d' {} +
-          cat >> release/seccomp/common_device.policy <<'EOF'
-
-# nixling glibc 2.41+ compat
-statx: 1
-EOF
+          printf '\n# nixling glibc 2.41+ compat\nstatx: 1\n' >> release/seccomp/common_device.policy
           for p in release/seccomp/*.policy; do
             python3 third_party/minijail/tools/compile_seccomp_policy.py \
               --arch-json release/seccomp/constants.json \
