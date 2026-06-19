@@ -1501,6 +1501,10 @@ impl Gpu {
                     path: path.clone(),
                     path_type: RUTABAGA_PATH_TYPE_WAYLAND,
                 }),
+                "gpu" => rutabaga_paths.push(RutabagaPath {
+                    path: path.clone(),
+                    path_type: RUTABAGA_PATH_TYPE_GPU,
+                }),
                 _ => error!("unknown rutabaga path"),
             }
         }

@@ -146,6 +146,10 @@ pub struct Options {
     #[argh(option, arg_name = "DISPLAY")]
     /// X11 display name to use
     x_display: Option<String>,
+    #[argh(option, arg_name = "PATH")]
+    /// path to the DRM render node (e.g. /dev/dri/renderD128) for
+    /// virglrenderer video decode acceleration
+    gpu_device_node: Option<PathBuf>,
     #[argh(
         option,
         from_str_fn(gpu_parameters_from_str),
@@ -165,9 +169,13 @@ pub fn run_gpu_device(opts: Options) -> anyhow::Result<()> {
         socket_path,
         fd,
         wayland_sock,
+        gpu_device_node,
     } = opts;
 
-    let channels: BTreeMap<_, _> = wayland_sock.into_iter().collect();
+    let mut channels: BTreeMap<_, _> = wayland_sock.into_iter().collect();
+    if let Some(node) = gpu_device_node {
+        channels.insert("gpu".to_string(), node);
+    }
 
     let resource_bridge_listeners = resource_bridge
         .into_iter()
