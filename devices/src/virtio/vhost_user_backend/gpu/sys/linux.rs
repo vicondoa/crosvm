@@ -222,13 +222,18 @@ pub fn run_gpu_device(opts: Options) -> anyhow::Result<()> {
 
     let (gpu_control_tube, _) = Tube::pair().context("failed to create gpu control tube")?;
 
-    let mut display_backends = vec![
-        virtio::DisplayBackend::X(x_display),
+    // security-r8-audio-11: port of talex5/crosvm@993b8e756.
+    // Use ONLY the Stub backend so crosvm never opens a wl_compositor
+    // client connection for the scanout display — no wl_surface, no
+    // xdg_toplevel, no chromeless "crosvm" window on the host
+    // compositor. The scanout protocol still validates against Stub;
+    // SetScanout calls discard silently. Cross-domain wayland
+    // forwarding (via wayland-proxy-virtwl) is independent of the
+    // scanout backend and unaffected.
+    let _ = x_display;
+    let display_backends = vec![
         virtio::DisplayBackend::Stub,
     ];
-    if let Some(p) = channels.get("") {
-        display_backends.insert(0, virtio::DisplayBackend::Wayland(Some(p.to_owned())));
-    }
 
     // These are only used when there is an input device.
     let event_devices = Vec::new();
